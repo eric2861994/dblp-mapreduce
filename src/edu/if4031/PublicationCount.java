@@ -93,5 +93,5 @@ public class PublicationCount {
     public static final String JOB_DESCRIPTION = "dblp publication count";
     public static final String USAGE = "Usage: publicationcount <in> <out>";
     public static final String[] PUBLICATION_END_TAGS = new String[]{
-            "</articles>", "</inproceedings>", "</phdthesis>", "</masterthesis>"};
+            "</article>", "</inproceedings>", "</phdthesis>", "</masterthesis>"};
 }
