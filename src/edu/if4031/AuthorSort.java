@@ -13,9 +13,7 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.TreeMap;
 
 public class AuthorSort {
 
@@ -44,10 +42,10 @@ public class AuthorSort {
      */
     public static class AuthorCountMapper extends Mapper<LongWritable, Text, IntWritable, Text> {
 
-        private final IntWritable numberOfPublications = new IntWritable();
-        private final Text author = new Text();
+        private final IntWritable dummyKey = new IntWritable();
+        private final Text numOfPublications_author = new Text();
 
-        private List<Pair<Integer, String>> pairList = new ArrayList<>();
+        private final TreeMap<Pair<Integer, String>, Boolean> top5 = new TreeMap<>();
 
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
@@ -55,20 +53,21 @@ public class AuthorSort {
             Integer num = Integer.parseInt(tmp[1]);
             String name = tmp[0];
 
-            pairList.add(new Pair<>(num, name));
+            top5.put(new Pair<>(num, name), Boolean.TRUE);
+            if (top5.size() > 5) {
+                top5.remove(top5.firstKey());
+            }
         }
 
         @Override
         protected void cleanup(Context context) throws IOException, InterruptedException {
-            Collections.sort(pairList);
+            while (!top5.isEmpty()) {
+                Pair<Integer, String> last = top5.lastKey();
+                top5.remove(last);
 
-            int lowerBound = Math.max(0, pairList.size() - 5);
-            for (int idx = pairList.size() - 1; idx >= lowerBound; idx--) {
-                Pair<Integer, String> pair = pairList.get(idx);
-
-                numberOfPublications.set(pair.left);
-                author.set(pair.right);
-                context.write(numberOfPublications, author);
+                String numOfPublications_authorString = last.left.toString() + "\t" + last.right;
+                numOfPublications_author.set(numOfPublications_authorString);
+                context.write(dummyKey, numOfPublications_author);
             }
         }
     }
@@ -87,21 +86,23 @@ public class AuthorSort {
         public void reduce(IntWritable key, Iterable<Text> values, Context context)
                 throws IOException, InterruptedException {
 
-            List<Pair<Integer, String>> top = new ArrayList<>();
+            TreeMap<Pair<Integer, String>, Boolean> top5 = new TreeMap<>();
             for (Text val : values) {
                 String tmp[] = val.toString().split("\\t");
                 Integer count = Integer.valueOf(tmp[0]);
 
-                top.add(new Pair<>(count, tmp[1]));
+                top5.put(new Pair<>(count, tmp[1]), Boolean.TRUE);
+                if (top5.size() > 5) {
+                    top5.remove(top5.firstKey());
+                }
             }
 
-            Collections.sort(top);
-            int lowerBound = Math.min(0, top.size() - 5);
-            for (int idx = top.size() - 1; idx >= lowerBound; idx--) {
-                Pair<Integer, String> p = top.get(idx);
+            while (!top5.isEmpty()) {
+                Pair<Integer, String> last = top5.lastKey();
+                top5.remove(last);
 
-                author.set(p.right);
-                numberOfPublications.set(p.left);
+                numberOfPublications.set(last.left);
+                author.set(last.right);
                 context.write(author, numberOfPublications);
             }
         }
@@ -122,13 +123,15 @@ public class AuthorSort {
         job.setJarByClass(AuthorSort.class);
 
         job.setMapperClass(AuthorCountMapper.class);
+        job.setMapOutputKeyClass(IntWritable.class);
+        job.setMapOutputValueClass(Text.class);
         job.setReducerClass(AuthorCountReducer.class);
 
         job.setInputFormatClass(TextInputFormat.class);
         TextInputFormat.addInputPath(job, new Path(otherArgs[0]));
 
-        job.setOutputKeyClass(LongWritable.class);
-        job.setOutputValueClass(Text.class);
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
         FileOutputFormat.setOutputPath(job, new Path(otherArgs[1]));
 
         System.exit(job.waitForCompletion(true) ? 0 : 1);
