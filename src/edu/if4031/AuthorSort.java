@@ -105,7 +105,7 @@ public class AuthorSort {
 
         Job job = Job.getInstance(conf, JOB_DESCRIPTION);
         job.setJar("authorsort.jar");
-        job.setJarByClass(PublicationCount.class);
+        job.setJarByClass(AuthorSort.class);
 
         job.setMapperClass(AuthorCountMapper.class);
         job.setReducerClass(AuthorCountReducer.class);
