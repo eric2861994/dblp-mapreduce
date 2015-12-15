@@ -30,11 +30,12 @@ public class AuthorCount {
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
 
             String line = value.toString();
-            for (String tag : PUBLICATION_END_TAGS) {
-                if (line.contains(tag)) {
-                    publicationType.set(tag.substring(2, tag.length() - 1));
-                    context.write(publicationType, publicationCount);
-                }
+            if (line.contains("<author>")) {
+                int idx = line.indexOf("<author>");
+                int idxlast = line.indexOf("</author>");
+                line = line.substring(idx+("<author>").length(),idxlast);
+                publicationType.set(line);
+                context.write(publicationType, publicationCount);
             }
         }
     }
