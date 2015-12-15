@@ -13,58 +13,62 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class AuthorSort {
 
-    public static class Pair<K extends Comparable<K>,V> implements Comparable<Pair<K, V>> {
+    public static class Pair<K extends Comparable<K>, V> implements Comparable<Pair<K, V>> {
         public Pair() {
-
         }
+
         public Pair(K left, V right) {
             this.left = left;
             this.right = right;
         }
+
         public K left;
         public V right;
 
         @Override
         public int compareTo(Pair<K, V> kvPair) {
-            return this.left.compareTo(kvPair.left);
+            return left.compareTo(kvPair.left);
         }
     }
 
     /**
      * CLASS DEFINITION
      * ----------------
-     * Emits (publication_type, 1) for each end tag found.
+     * Emits top 5 authors based on number of publications.
      */
-    public static class AuthorCountMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
+    public static class AuthorCountMapper extends Mapper<LongWritable, Text, IntWritable, Text> {
 
-        private LongWritable longWritable1 = new LongWritable(1);
-        private Text dummyText = new Text();
+        private final IntWritable numberOfPublications = new IntWritable();
+        private final Text author = new Text();
 
-        private TreeMap<Long, Text> top = new TreeMap<>();
-        private List<Pair<Long, Text>> pairList = new ArrayList<>();
+        private List<Pair<Integer, String>> pairList = new ArrayList<>();
+
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             String tmp[] = value.toString().split("\\t");
-            Long num = Long.parseLong(tmp[1]);
+            Integer num = Integer.parseInt(tmp[1]);
             String name = tmp[0];
-            dummyText.set(name);
-            pairList.add(new Pair<>(num, dummyText));
+
+            pairList.add(new Pair<>(num, name));
         }
 
         @Override
         protected void cleanup(Context context) throws IOException, InterruptedException {
             Collections.sort(pairList);
-            int num = 0;
-            for (Map.Entry<Long, Text> entry : top.entrySet()) {
-                ++num;
-                if (num > 5) break;
-                String tmp = entry.getKey().toString() + "\t" + entry.getValue().toString();
-                dummyText.set(tmp);
-                context.write(longWritable1, dummyText);
+
+            int lowerBound = Math.max(0, pairList.size() - 5);
+            for (int idx = pairList.size() - 1; idx >= lowerBound; idx--) {
+                Pair<Integer, String> pair = pairList.get(idx);
+
+                numberOfPublications.set(pair.left);
+                author.set(pair.right);
+                context.write(numberOfPublications, author);
             }
         }
     }
@@ -72,23 +76,33 @@ public class AuthorSort {
     /**
      * CLASS DEFINITION
      * ----------------
-     * Count the occurrence of a key.
+     * Combine and output top 5 authors based on number of publications.
      */
-    public static class AuthorCountReducer extends Reducer<LongWritable, Text, Text, LongWritable> {
-        private Text author = new Text();
-        public void reduce(LongWritable key, Iterable<Text> values, Context context)
+    public static class AuthorCountReducer extends Reducer<IntWritable, Text, Text, IntWritable> {
+
+        private final Text author = new Text();
+        private final IntWritable numberOfPublications = new IntWritable();
+
+        @Override
+        public void reduce(IntWritable key, Iterable<Text> values, Context context)
                 throws IOException, InterruptedException {
-            List<Pair<Long, Text>> top = new ArrayList<>();
+
+            List<Pair<Integer, String>> top = new ArrayList<>();
             for (Text val : values) {
                 String tmp[] = val.toString().split("\\t");
-                System.out.println("testing " + tmp[0]);
-                Long count = Long.valueOf(tmp[0]);
-                author.set(tmp[1]);
-                top.add(new Pair<>(count, author));
+                Integer count = Integer.valueOf(tmp[0]);
+
+                top.add(new Pair<>(count, tmp[1]));
             }
+
             Collections.sort(top);
-            for (Pair<Long, Text> p : top) {
-                context.write(p.right, new LongWritable(p.left));
+            int lowerBound = Math.min(0, top.size() - 5);
+            for (int idx = top.size() - 1; idx >= lowerBound; idx--) {
+                Pair<Integer, String> p = top.get(idx);
+
+                author.set(p.right);
+                numberOfPublications.set(p.left);
+                context.write(author, numberOfPublications);
             }
         }
     }
@@ -119,8 +133,8 @@ public class AuthorSort {
 
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
+
+
     public static final String JOB_DESCRIPTION = "dblp author sort";
     public static final String USAGE = "Usage: authorsort <in> <out>";
-    public static final String[] PUBLICATION_END_TAGS = new String[]{
-            "</author>"};
 }
