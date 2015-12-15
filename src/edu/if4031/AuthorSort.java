@@ -13,10 +13,26 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 
 import java.io.IOException;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 
 public class AuthorSort {
+
+    public static class Pair<K extends Comparable<K>,V> implements Comparable<Pair<K, V>> {
+        public Pair() {
+
+        }
+        public Pair(K left, V right) {
+            this.left = left;
+            this.right = right;
+        }
+        public K left;
+        public V right;
+
+        @Override
+        public int compareTo(Pair<K, V> kvPair) {
+            return this.left.compareTo(kvPair.left);
+        }
+    }
 
     /**
      * CLASS DEFINITION
@@ -25,26 +41,30 @@ public class AuthorSort {
      */
     public static class AuthorCountMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
 
-        private final Text publicationType = new Text();
-        private final IntWritable publicationCount = new IntWritable(1);
-        private TreeMap<Long, Text> top = new TreeMap<>();
+        private LongWritable longWritable1 = new LongWritable(1);
+        private Text dummyText = new Text();
 
+        private TreeMap<Long, Text> top = new TreeMap<>();
+        private List<Pair<Long, Text>> pairList = new ArrayList<>();
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             String tmp[] = value.toString().split("\\t");
             Long num = Long.parseLong(tmp[1]);
             String name = tmp[0];
-            top.put(num, new Text(name));
-            if (top.size() > 5) {
-                top.remove(top.firstKey());
-            }
+            dummyText.set(name);
+            pairList.add(new Pair<>(num, dummyText));
         }
 
         @Override
         protected void cleanup(Context context) throws IOException, InterruptedException {
+            Collections.sort(pairList);
+            int num = 0;
             for (Map.Entry<Long, Text> entry : top.entrySet()) {
-                String tmp = entry.getKey() + '\t' + entry.getValue().toString();
-                context.write(new LongWritable(1), new Text(tmp));
+                ++num;
+                if (num > 5) break;
+                String tmp = entry.getKey().toString() + "\t" + entry.getValue().toString();
+                dummyText.set(tmp);
+                context.write(longWritable1, dummyText);
             }
         }
     }
@@ -55,24 +75,20 @@ public class AuthorSort {
      * Count the occurrence of a key.
      */
     public static class AuthorCountReducer extends Reducer<LongWritable, Text, Text, LongWritable> {
-
-        private final IntWritable result = new IntWritable();
-
+        private Text author = new Text();
         public void reduce(LongWritable key, Iterable<Text> values, Context context)
                 throws IOException, InterruptedException {
-            int sum = 0;
-            TreeMap<Long, Text> top = new TreeMap<>();
+            List<Pair<Long, Text>> top = new ArrayList<>();
             for (Text val : values) {
                 String tmp[] = val.toString().split("\\t");
+                System.out.println("testing " + tmp[0]);
                 Long count = Long.valueOf(tmp[0]);
-                Text author = new Text(tmp[1]);
-                top.put(count, author);
-                if (top.size() > 5) {
-                    top.remove(top.firstKey());
-                }
+                author.set(tmp[1]);
+                top.add(new Pair<>(count, author));
             }
-            for (Map.Entry<Long, Text> entry : top.entrySet()) {
-                context.write(entry.getValue(), new LongWritable(entry.getKey().longValue()));
+            Collections.sort(top);
+            for (Pair<Long, Text> p : top) {
+                context.write(p.right, new LongWritable(p.left));
             }
         }
     }
@@ -92,7 +108,6 @@ public class AuthorSort {
         job.setJarByClass(PublicationCount.class);
 
         job.setMapperClass(AuthorCountMapper.class);
-        job.setCombinerClass(AuthorCountReducer.class);
         job.setReducerClass(AuthorCountReducer.class);
 
         job.setInputFormatClass(TextInputFormat.class);
