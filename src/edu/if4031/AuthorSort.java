@@ -23,15 +23,18 @@ public class AuthorSort {
      * ----------------
      * Emits (publication_type, 1) for each end tag found.
      */
-    public static class AuthorCountMapper extends Mapper<Text, LongWritable, LongWritable, Text> {
+    public static class AuthorCountMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
 
         private final Text publicationType = new Text();
         private final IntWritable publicationCount = new IntWritable(1);
         private TreeMap<Long, Text> top = new TreeMap<>();
 
         @Override
-        protected void map(Text key, LongWritable value, Context context) throws IOException, InterruptedException {
-            top.put(value.get(), key);
+        protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+            String tmp[] = value.toString().split("\\t");
+            Long num = Long.parseLong(tmp[1]);
+            String name = tmp[0];
+            top.put(num, new Text(name));
             if (top.size() > 5) {
                 top.remove(top.firstKey());
             }
@@ -61,7 +64,7 @@ public class AuthorSort {
             TreeMap<Long, Text> top = new TreeMap<>();
             for (Text val : values) {
                 String tmp[] = val.toString().split("\\t");
-                Long count = new Long(tmp[0]);
+                Long count = Long.valueOf(tmp[0]);
                 Text author = new Text(tmp[1]);
                 top.put(count, author);
                 if (top.size() > 5) {
@@ -85,7 +88,7 @@ public class AuthorSort {
         }
 
         Job job = Job.getInstance(conf, JOB_DESCRIPTION);
-        job.setJar("publicationcount.jar");
+        job.setJar("authorsort.jar");
         job.setJarByClass(PublicationCount.class);
 
         job.setMapperClass(AuthorCountMapper.class);
@@ -95,14 +98,14 @@ public class AuthorSort {
         job.setInputFormatClass(TextInputFormat.class);
         TextInputFormat.addInputPath(job, new Path(otherArgs[0]));
 
-        job.setOutputKeyClass(Text.class);
-        job.setOutputValueClass(IntWritable.class);
+        job.setOutputKeyClass(LongWritable.class);
+        job.setOutputValueClass(Text.class);
         FileOutputFormat.setOutputPath(job, new Path(otherArgs[1]));
 
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
-    public static final String JOB_DESCRIPTION = "dblp author count";
-    public static final String USAGE = "Usage: publicationcount <in> <out>";
+    public static final String JOB_DESCRIPTION = "dblp author sort";
+    public static final String USAGE = "Usage: authorsort <in> <out>";
     public static final String[] PUBLICATION_END_TAGS = new String[]{
             "</author>"};
 }
