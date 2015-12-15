@@ -19,12 +19,13 @@ public class AuthorCount {
     /**
      * CLASS DEFINITION
      * ----------------
-     * Emits (publication_type, 1) for each end tag found.
+     * Emits (author_name, 1) for each author found.
      */
     public static class AuthorCountMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
 
-        private final Text publicationType = new Text();
-        private final IntWritable publicationCount = new IntWritable(1);
+        private final Text authorName = new Text();
+        private final IntWritable one = new IntWritable(1);
+
 
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
@@ -33,9 +34,12 @@ public class AuthorCount {
             if (line.contains("<author>")) {
                 int idx = line.indexOf("<author>");
                 int idxlast = line.indexOf("</author>");
-                line = line.substring(idx+("<author>").length(),idxlast);
-                publicationType.set(line);
-                context.write(publicationType, publicationCount);
+
+                // authorname start at the end of <author> and ends before the start of </author>
+                line = line.substring(idx + 8, idxlast);
+
+                authorName.set(line);
+                context.write(authorName, one);
             }
         }
     }
@@ -43,7 +47,6 @@ public class AuthorCount {
     /**
      * CLASS DEFINITION
      * ----------------
-     * Count the occurrence of a key.
      */
     public static class AuthorCountReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
 
@@ -89,8 +92,8 @@ public class AuthorCount {
 
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
+
+
     public static final String JOB_DESCRIPTION = "dblp author count";
     public static final String USAGE = "Usage: authorcount <in> <out>";
-    public static final String[] PUBLICATION_END_TAGS = new String[]{
-            "</author>"};
 }
